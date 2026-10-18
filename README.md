@@ -68,7 +68,25 @@ python main.py --ttl 2h
 python main.py --ttl 30m
 ```
 
-### 4. Filter by Country
+### 4. Filter by Protocol / Features (Obfuscated & NordWhisper)
+```bash
+# Test ONLY Obfuscated + NordWhisper servers (5,432 servers)
+python main.py --type obfuscated,nordwhisper
+
+# Or use the convenient flags:
+python main.py --obfuscated --nordwhisper
+
+# Test Obfuscated servers only (97 servers)
+python main.py --obfuscated
+
+# Test NordWhisper servers only (5,335 servers)
+python main.py --nordwhisper
+
+# Combine with country filters (e.g. US Obfuscated + NordWhisper)
+python main.py --country US --type obfuscated,nordwhisper
+```
+
+### 5. Filter by Country
 ```bash
 # Test only US servers (~2,500 servers)
 python main.py --country US
@@ -77,12 +95,12 @@ python main.py --country US
 python main.py --country DE,GB,NL
 ```
 
-### 5. Force Full Retest (Bypass Cache)
+### 6. Force Full Retest (Bypass Cache)
 ```bash
 python main.py --force
 ```
 
-### 6. Full Cryptographic TLS Handshake Mode
+### 7. Full Cryptographic TLS Handshake Mode
 ```bash
 python main.py --mode tls --concurrency 200
 ```
@@ -98,6 +116,9 @@ python main.py --mode tls --concurrency 200
 | `--timeout` | `-t` | `3.0` | Socket connection timeout in seconds per server. |
 | `--ttl` | | `6h` | Cache TTL (`30m`, `2h`, `1d`, `3600s`). Passed on restart. |
 | `--country` | | `all` | Filter by country code (`US`, `DE`, `CA,GB`, or `all`). |
+| `--type` / `--feature` | | `""` | Filter by protocol (`obfuscated`, `nordwhisper`, `p2p`). |
+| `--obfuscated` | | `False` | Filter to Obfuscated / XOR servers only. |
+| `--nordwhisper` | | `False` | Filter to NordWhisper servers only. |
 | `--mode` | | `tcp` | `tcp` (fastest 3-way handshake) or `tls` (SSL negotiation). |
 | `--force` | | `False` | Retest all servers by clearing existing cache. |
 | `--refresh-servers` | | `False` | Re-fetch the server list from the NordVPN API. |

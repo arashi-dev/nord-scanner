@@ -152,6 +152,7 @@ class BulkScanner:
             latency_ms=round(latency_ms, 2) if latency_ms is not None else None,
             tested_at=time.time(),
             is_cached=False,
+            features=server.feature_tags,
             error_msg=error_msg,
         )
 

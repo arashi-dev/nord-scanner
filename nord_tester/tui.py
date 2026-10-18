@@ -28,6 +28,7 @@ class AppState:
         ttl_display: str,
         mode: str,
         country_filter_str: str = "ALL",
+        feature_filter_str: str = "ALL",
     ):
         self.total_servers = total_servers
         self.cached_count = cached_count
@@ -37,6 +38,7 @@ class AppState:
         self.ttl_display = ttl_display
         self.mode = mode.upper()
         self.country_filter_str = country_filter_str
+        self.feature_filter_str = feature_filter_str
 
         self.tested_count = cached_count
         self.online_count = 0
@@ -200,8 +202,9 @@ def render_ui(state: AppState, console_width: int = 120) -> RenderableType:
     header_table.add_column(justify="right", ratio=1)
 
     title_text = Text.assemble(
-        ("NORDVPN BULK CONNECTION BENCHMARK ", "bold cyan"),
-        (f"[{state.mode}]", "bold yellow"),
+        ("NORDVPN BULK BENCHMARK ", "bold cyan"),
+        (f"[{state.mode}] ", "bold yellow"),
+        (f"[{state.feature_filter_str}]", "bold magenta" if state.feature_filter_str != "ALL" else "dim"),
     )
     right_meta = Text.assemble(
         ("Servers: ", "dim"),

@@ -36,6 +36,12 @@ def parse_server(s: dict) -> Optional[ServerInfo]:
         if isinstance(t, dict) and t.get("identifier")
     ]
 
+    group_identifiers = [
+        g.get("identifier", "")
+        for g in s.get("groups") or []
+        if isinstance(g, dict) and g.get("identifier")
+    ]
+
     return ServerInfo(
         id=int(s["id"]),
         name=s.get("name") or f"Server #{s['id']}",
@@ -46,13 +52,37 @@ def parse_server(s: dict) -> Optional[ServerInfo]:
         city=city_name,
         load=int(s.get("load") or 0),
         technologies=tech_identifiers,
+        groups=group_identifiers,
     )
+
+
+def matches_features(server: ServerInfo, requested_features: List[str]) -> bool:
+    """Return True if server matches ANY of the requested feature tags."""
+    for rf in requested_features:
+        f = rf.strip().lower()
+        if f in ("obfuscated", "xor", "obfuscate") and server.is_obfuscated:
+            return True
+        if f in ("nordwhisper", "whisper", "nord_whisper") and server.is_nordwhisper:
+            return True
+        if f == "p2p" and any("p2p" in g.lower() for g in server.groups):
+            return True
+        if f in ("double", "double_vpn") and any("double" in g.lower() for g in server.groups):
+            return True
+        if f == "onion" and any("onion" in g.lower() for g in server.groups):
+            return True
+        if f == "dedicated" and any("dedicated" in g.lower() for g in server.groups):
+            return True
+        # Generic match against technologies or groups
+        if any(f in t.lower() for t in server.technologies) or any(f in g.lower() for g in server.groups):
+            return True
+    return False
 
 
 def fetch_all_servers(
     force_refresh: bool = False,
     progress_callback: Optional[Callable[[str], None]] = None,
     country_filter: Optional[List[str]] = None,
+    feature_filter: Optional[List[str]] = None,
 ) -> List[ServerInfo]:
     """
     Fetch all NordVPN servers.
@@ -100,13 +130,16 @@ def fetch_all_servers(
                 raise RuntimeError(f"Failed to fetch NordVPN servers and no cache available: {e}")
 
     servers: List[ServerInfo] = []
-    filter_set = {c.strip().upper() for c in country_filter} if country_filter else None
+    country_set = {c.strip().upper() for c in country_filter} if country_filter else None
+    feat_list = [f.strip().lower() for f in feature_filter if f.strip()] if feature_filter else None
 
     for item in raw_data:
         parsed = parse_server(item)
         if parsed is None:
             continue
-        if filter_set and parsed.country_code not in filter_set:
+        if country_set and parsed.country_code not in country_set:
+            continue
+        if feat_list and not matches_features(parsed, feat_list):
             continue
         servers.append(parsed)
 

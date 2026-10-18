@@ -54,6 +54,23 @@ def parse_args():
         help="Filter servers by country code (e.g. US, DE, CA,GB or 'all'). Default: all.",
     )
     parser.add_argument(
+        "--type", "--feature",
+        dest="feature",
+        type=str,
+        default="",
+        help="Filter servers by protocol/feature (e.g. 'obfuscated', 'nordwhisper', 'obfuscated,nordwhisper', 'p2p').",
+    )
+    parser.add_argument(
+        "--obfuscated",
+        action="store_true",
+        help="Filter to Obfuscated / XOR servers only.",
+    )
+    parser.add_argument(
+        "--nordwhisper",
+        action="store_true",
+        help="Filter to NordWhisper servers only.",
+    )
+    parser.add_argument(
         "--mode",
         choices=["tcp", "tls"],
         default="tcp",
@@ -99,6 +116,16 @@ def main():
     if args.country and args.country.strip().lower() != "all":
         country_filter = [c.strip().upper() for c in args.country.split(",") if c.strip()]
 
+    # Process feature/type filter
+    feature_filter: List[str] = []
+    if args.feature:
+        feature_filter.extend([f.strip().lower() for f in args.feature.split(",") if f.strip()])
+    if args.obfuscated and "obfuscated" not in feature_filter:
+        feature_filter.append("obfuscated")
+    if args.nordwhisper and "nordwhisper" not in feature_filter:
+        feature_filter.append("nordwhisper")
+    feature_filter_opt = feature_filter if feature_filter else None
+
     # Convert 0 concurrency to very high number so all are tested simultaneously
     concurrency = 10000 if args.concurrency <= 0 else args.concurrency
 
@@ -111,6 +138,7 @@ def main():
         refresh_servers=args.refresh_servers,
         mode=args.mode,
         country_filter=country_filter,
+        feature_filter=feature_filter_opt,
         csv_export=args.export_csv if args.export_csv else None,
         json_export=args.export_json if args.export_json else None,
         auto_exit=args.auto_exit,

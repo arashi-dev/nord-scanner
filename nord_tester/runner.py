@@ -47,6 +47,7 @@ class AppRunner:
         refresh_servers: bool = False,
         mode: str = "tcp",
         country_filter: Optional[List[str]] = None,
+        feature_filter: Optional[List[str]] = None,
         csv_export: Optional[str] = "nord_results.csv",
         json_export: Optional[str] = "nord_results.json",
         auto_exit: bool = False,
@@ -60,6 +61,7 @@ class AppRunner:
         self.refresh_servers = refresh_servers
         self.mode = mode
         self.country_filter = country_filter
+        self.feature_filter = feature_filter
         self.csv_export = csv_export
         self.json_export = json_export
         self.auto_exit = auto_exit
@@ -161,8 +163,12 @@ class AppRunner:
 
         # Initial message
         filter_desc = ",".join(self.country_filter).upper() if self.country_filter else "ALL"
+        type_desc = "+".join(f.title() for f in self.feature_filter) if self.feature_filter else "ALL"
         self.console.print(f"[bold cyan]Initializing NordVPN Bulk Tester...[/bold cyan]")
-        self.console.print(f"[dim]Country filter: {filter_desc} | Mode: {self.mode.upper()} | Concurrency: {self.concurrency}[/dim]")
+        self.console.print(
+            f"[dim]Country filter: {filter_desc} | Type filter: {type_desc} | "
+            f"Mode: {self.mode.upper()} | Concurrency: {self.concurrency}[/dim]"
+        )
 
         # If user passed force_retest CLI flag, clear the cache upfront
         if self.force_retest:
@@ -174,6 +180,7 @@ class AppRunner:
             force_refresh=self.refresh_servers,
             progress_callback=lambda msg: self.console.print(f"[dim]{msg}[/dim]"),
             country_filter=self.country_filter,
+            feature_filter=self.feature_filter,
         )
 
         if not self.all_servers:
@@ -184,9 +191,10 @@ class AppRunner:
         # Prepare initial cache state
         fresh_cache = self.cache_manager.get_fresh_cache(self.ttl_seconds)
 
-        # Categorize into cached vs untested
-        cached_servers = [s for s in self.all_servers if s.id in fresh_cache]
-        untested_servers = [s for s in self.all_servers if s.id not in fresh_cache]
+        # Categorize into cached vs untested for current scope
+        relevant_cache = {s.id: fresh_cache[s.id] for s in self.all_servers if s.id in fresh_cache}
+        cached_servers = [s for s in self.all_servers if s.id in relevant_cache]
+        untested_servers = [s for s in self.all_servers if s.id not in relevant_cache]
 
         self.app_state = AppState(
             total_servers=len(self.all_servers),
@@ -197,8 +205,9 @@ class AppRunner:
             ttl_display=self.ttl_str,
             mode=self.mode,
             country_filter_str=filter_desc,
+            feature_filter_str=type_desc,
         )
-        self.app_state.register_cached_results(fresh_cache)
+        self.app_state.register_cached_results(relevant_cache)
 
         # Start TUI Live display
         with Live(render_ui(self.app_state, self.console.size.width), console=self.console, refresh_per_second=10) as live:
@@ -235,6 +244,7 @@ class AppRunner:
                             ttl_display=self.ttl_str,
                             mode=self.mode,
                             country_filter_str=filter_desc,
+                            feature_filter_str=type_desc,
                         )
                         untested_servers = list(self.all_servers)
                         continue

@@ -26,6 +26,34 @@ class ServerInfo:
     city: str
     load: int
     technologies: List[str] = field(default_factory=list)
+    groups: List[str] = field(default_factory=list)
+
+    @property
+    def is_obfuscated(self) -> bool:
+        """Check if server supports Obfuscated / XOR protocol."""
+        return any("xor" in t.lower() or "obfusc" in t.lower() for t in self.technologies) or \
+               any("obfusc" in g.lower() for g in self.groups)
+
+    @property
+    def is_nordwhisper(self) -> bool:
+        """Check if server supports NordWhisper protocol."""
+        return any("whisper" in t.lower() for t in self.technologies)
+
+    @property
+    def feature_tags(self) -> List[str]:
+        """Return list of human-friendly feature tags."""
+        tags = []
+        if self.is_obfuscated:
+            tags.append("Obfuscated")
+        if self.is_nordwhisper:
+            tags.append("NordWhisper")
+        if any("p2p" in g.lower() for g in self.groups):
+            tags.append("P2P")
+        if any("double" in g.lower() for g in self.groups):
+            tags.append("DoubleVPN")
+        if any("onion" in g.lower() for g in self.groups):
+            tags.append("Onion")
+        return tags or ["Standard"]
 
 
 @dataclass
@@ -43,6 +71,7 @@ class TestResult:
     latency_ms: Optional[float]  # round trip latency in milliseconds
     tested_at: float             # epoch timestamp in seconds
     is_cached: bool = False      # true if loaded from persistent cache
+    features: List[str] = field(default_factory=list)
     error_msg: Optional[str] = None
 
     @property
