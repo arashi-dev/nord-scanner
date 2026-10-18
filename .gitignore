@@ -1,0 +1,17 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Cache directory (database and server metadata)
+.cache/
+
+# Results exports (can be generated on demand)
+nord_results.csv
+nord_results.json
+
+# Environments
+.env
+.venv
+env/
+venv/
