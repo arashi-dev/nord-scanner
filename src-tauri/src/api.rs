@@ -1,14 +1,22 @@
 use anyhow::{Context, Result};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;
-use std::path::PathBuf;
-use std::time::{Duration, SystemTime};
+use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::models::ServerInfo;
 
-const NORD_SERVERS_URL: &str = "https://api.nordvpn.com/v1/servers?limit=0";
-const META_CACHE_TTL_SECS: u64 = 24 * 3600;
+pub const NORD_SERVERS_URL: &str = "https://api.nordvpn.com/v1/servers?limit=0";
+pub const META_CACHE_TTL_SECS: u64 = 24 * 3600;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetadataInfo {
+    pub exists: bool,
+    pub count: usize,
+    pub last_modified: Option<u64>,
+    pub age_seconds: Option<u64>,
+}
 
 #[derive(Debug, Deserialize)]
 struct RawServer {
@@ -160,6 +168,89 @@ pub fn matches_features(server: &ServerInfo, requested_features: &[String]) -> b
     false
 }
 
+pub fn get_cache_file(custom_dir: Option<&Path>) -> PathBuf {
+    let dir = match custom_dir {
+        Some(d) => d.to_path_buf(),
+        None => PathBuf::from(".cache"),
+    };
+    let _ = fs::create_dir_all(&dir);
+    dir.join("nord_servers_metadata.json")
+}
+
+pub fn get_metadata_info(custom_dir: Option<&Path>) -> MetadataInfo {
+    let cache_file = get_cache_file(custom_dir);
+    if !cache_file.exists() {
+        return MetadataInfo {
+            exists: false,
+            count: 0,
+            last_modified: None,
+            age_seconds: None,
+        };
+    }
+
+    let meta = fs::metadata(&cache_file).ok();
+    let mtime_epoch = meta.and_then(|m| m.modified().ok()).and_then(|t| {
+        t.duration_since(UNIX_EPOCH).ok().map(|d| d.as_secs())
+    });
+
+    let now_epoch = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    let age_seconds = mtime_epoch.map(|mt| now_epoch.saturating_sub(mt));
+
+    // Try reading count
+    let count = if let Ok(data) = fs::read(&cache_file) {
+        if let Ok(raw_list) = serde_json::from_slice::<Vec<RawServer>>(&data) {
+            raw_list.len()
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    MetadataInfo {
+        exists: count > 0,
+        count,
+        last_modified: mtime_epoch,
+        age_seconds,
+    }
+}
+
+pub async fn refresh_servers_data(custom_dir: Option<&Path>) -> Result<(Vec<ServerInfo>, u64)> {
+    let cache_file = get_cache_file(custom_dir);
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(45))
+        .build()?;
+
+    let resp = client.get(NORD_SERVERS_URL).send().await
+        .context("Failed to connect to NordVPN API")?;
+    let bytes = resp.bytes().await.context("Failed to read server response bytes")?;
+    let raw_bytes = bytes.to_vec();
+
+    let raw_list: Vec<RawServer> = serde_json::from_slice(&raw_bytes)
+        .context("Failed to deserialize NordVPN server catalog JSON")?;
+
+    let _ = fs::write(&cache_file, &raw_bytes);
+
+    let servers: Vec<ServerInfo> = raw_list.into_iter().filter_map(parse_server).collect();
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
+
+    Ok((servers, now))
+}
+
+pub fn load_cached_servers_data(custom_dir: Option<&Path>) -> Result<Vec<ServerInfo>> {
+    let cache_file = get_cache_file(custom_dir);
+    let bytes = fs::read(&cache_file).context("No cached servers file found")?;
+    let raw_list: Vec<RawServer> = serde_json::from_slice(&bytes)
+        .context("Failed to deserialize NordVPN server catalog JSON")?;
+
+    let servers: Vec<ServerInfo> = raw_list.into_iter().filter_map(parse_server).collect();
+    Ok(servers)
+}
+
 pub async fn fetch_all_servers<F>(
     force_refresh: bool,
     progress_callback: F,
@@ -169,10 +260,7 @@ pub async fn fetch_all_servers<F>(
 where
     F: Fn(&str),
 {
-    let cache_dir = PathBuf::from(".cache");
-    let cache_file = cache_dir.join("nord_servers_metadata.json");
-    let _ = fs::create_dir_all(&cache_dir);
-
+    let cache_file = get_cache_file(None);
     let mut raw_bytes: Option<Vec<u8>> = None;
 
     if !force_refresh && cache_file.exists() {

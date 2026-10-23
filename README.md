@@ -1,205 +1,115 @@
-# NordVPN Bulk Connection Benchmark & TUI Tester
+# Nord Scanner (Tauri v2 Desktop & Mobile)
 
-A high-performance Terminal User Interface (TUI) for **bulk connection benchmarking of all NordVPN servers simultaneously**, featuring real-time socket probing, millisecond latency measurements, and **persistent SQLite caching with configurable TTL**.
-
-If testing is stopped or restarted, it **automatically detects and passes already-tested servers within the TTL window**, resuming testing only for the remaining pending servers.
+A high-performance GUI and engine for **bulk connection benchmarking and scanning of all NordVPN servers simultaneously**, built with **Tauri v2, React 19, Vite, Tailwind CSS, and Shadcn UI**. Features real-time socket probing, millisecond latency measurements, persistent SQLite caching, and multiplatform support across Windows, macOS, Linux, and Android.
 
 ---
 
 ## 🚀 Features
 
-- **Real Connection Testing**:
-  - Connects directly to server listening endpoints (default: TCP port 443 for OpenVPN / SSL / NordWhisper).
-  - Performs real 3-way TCP handshake (or optional `--mode tls` for cryptographic SSL handshake), proving actual end-to-end socket connectivity and precise round-trip latency.
-- **Simultaneous Bulk Testing**:
-  - Powered by Python's `asyncio` and high-capacity concurrency semaphore (e.g. 500–1,000 workers).
+- **Tauri v2 Multiplatform Desktop & Mobile App**:
+  - Supported platforms: **Windows**, **macOS**, **Linux**, and **Android**.
+  - **Single Instance Support**: Enforces a single application instance on desktop and brings the active window to focus when re-launched.
+  - **Auto-Updater Support**: Built-in Tauri v2 updater (`@tauri-apps/plugin-updater`) for seamless over-the-air updates.
+- **Bulk Real Connection Testing**:
+  - Connects directly to server listening endpoints (default: TCP port 443 for OpenVPN / SSL / NordWhisper, or optional TLS cryptographic handshake).
+  - High-capacity Tokio async concurrency (tested up to 1,000+ workers).
   - Benchmark all 7,200+ global NordVPN servers in **under 15–20 seconds** (~400+ tests/second).
-- **Persistent Cache with TTL (Resume / Restart Support)**:
-  - Backed by an atomic, thread-safe SQLite database (`.cache/nord_test_cache.db`) in WAL mode.
-  - Configurable TTL (e.g. `--ttl 6h`, `--ttl 30m`, `--ttl 1d`).
-  - **On restart**: Reads cached servers within TTL, marks them as passed, loads their metrics into the dashboard, and tests **only the remaining unverified servers**.
-- **Interactive Rich TUI**:
-  - **Header & Configuration**: Total servers, cached count, pending count, active concurrency, port, and TTL.
-  - **Live Metrics Dashboard**: Real-time progress bar, online/offline count with percentages, Min/Avg/Max latency, scan speed (tests/sec), elapsed time, and ETA.
-  - **Live Probe Stream**: Real-time feed of recent server tests showing country, server name, station IP, status, latency color grading, and source (Live vs Cache).
-  - **Top 10 Fastest Servers**: Dynamic real-time leaderboard sorted by lowest ping with current server load percentage.
-  - **Hotkeys**:
-    - `[Q]` / `Ctrl+C`: Gracefully stop and export results.
-    - `[P]`: Pause / Resume testing.
-    - `[R]`: Retest All (clear cache and force fresh benchmark).
-    - `[E]`: Export results to CSV & JSON on demand.
-- **Data Exporting**:
-  - Automatic and on-demand export to `nord_results.csv` and `nord_results.json` ranked by latency.
+- **Persistent Filters & Settings with Reset**:
+  - Filter by Country (with automatic counts), Port, Protocol / Feature (`obfuscated`, `nordwhisper`, `p2p`, `double`, `onion`, `dedicated`), Mode (`tcp` vs `tls`), Concurrency, Search keyword, and Status.
+  - **Default Timeout**: Configured to **30 seconds** by default.
+  - All filter settings persist in `localStorage` across restarts.
+  - **Reset Button**: One-click reset restoring all defaults (including 30s timeout, port 443, etc.).
+- **Decoupled Manual Server Refresh**:
+  - Re-fetching the complete server catalog from the NordVPN API is done **manually and separately from scanning**.
+  - Dynamically displays the **last time it was refreshed successfully in time-ago format** (e.g. `just now`, `5 minutes ago`, `3 hours ago`).
+- **Live Metrics & Leaderboard**:
+  - Real-time progress bar, online/offline counts, tests/sec scan speed, elapsed time, and ETA.
+  - Dynamic Top 10 fastest online servers ranked by lowest latency with one-click IP copy.
+- **Automated GitHub Releases Workflow**:
+  - Automated CI/CD on tag push (`v*`) in [`.github/workflows/release.yml`](.github/workflows/release.yml).
+  - Builds Windows installers (`.msi`, `.exe`), macOS bundles (`.dmg`, `.app`), Linux packages (`.deb`, `.AppImage`), and Android APKs (`.apk`).
+  - Publishes assets and signed updater bundles to GitHub Releases.
 
 ---
 
-## 📦 Installation & Requirements
+## 🛠️ Tech Stack
 
-### Rust Implementation (Recommended — Max Performance)
-Requires **Rust 1.75+** (`cargo` and `rustc`).
-
-Build the release binary:
-```bash
-cargo build --release
-```
-The optimized binary will be generated at `./target/release/nord_tester.exe` (or `nord_tester` on Unix).
-
-Run tests:
-```bash
-cargo test
-```
-
-### Python Implementation
-Requires **Python 3.10+**.
-
-Install dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-*(Dependencies: `rich>=13.0.0`, `httpx>=0.24.0`)*
+- **Framework**: Tauri v2 (`@tauri-apps/api@2`, `tauri@2`)
+- **Frontend**: React 19, TypeScript, Vite 6
+- **Styling**: Tailwind CSS, Shadcn UI architecture, Lucide Icons
+- **Backend / Core Engine**: Rust (Tokio, reqwest, rusqlite with bundled SQLite, rustls)
+- **Plugins**: `tauri-plugin-single-instance`, `tauri-plugin-updater`
 
 ---
 
-## ⚡ Quick Start
+## 📦 Getting Started
 
-### 1. Test All 7,200+ Servers
-**Rust:**
-```bash
-cargo run --release --
-# or directly execute the binary:
-./target/release/nord_tester
-```
-**Python:**
-```bash
-python main.py
-```
+### Prerequisites
 
-### 2. Test with Custom Concurrency (e.g., 1,000 Simultaneous Workers)
-```bash
-cargo run --release -- --concurrency 1000
-# or
-python main.py --concurrency 1000
-```
-*(Tip: Setting `--concurrency 0` launches all servers simultaneously).*
+- **Node.js**: v20+ or v22+
+- **Rust**: 1.75+ (`rustc` and `cargo`)
+- For Android: Android Studio / Android SDK & NDK
 
-### 3. Custom Cache TTL (e.g., 2 hours or 30 minutes)
-```bash
-# Cache test results for 2 hours (restarting passes servers tested in the last 2 hours)
-cargo run --release -- --ttl 2h
+### Installation
 
-# Or 30 minutes
-cargo run --release -- --ttl 30m
+```bash
+npm install
 ```
 
-### 4. Filter by Protocol / Features (Obfuscated & NordWhisper)
+### Development Mode
+
+Run the desktop application in dev mode with live reload:
+
 ```bash
-# Test ONLY Obfuscated + NordWhisper servers (5,432 servers)
-cargo run --release -- --type obfuscated,nordwhisper
-
-# Or use the convenient flags:
-cargo run --release -- --obfuscated --nordwhisper
-
-# Test Obfuscated servers only (97 servers)
-cargo run --release -- --obfuscated
-
-# Test NordWhisper servers only (5,335 servers)
-cargo run --release -- --nordwhisper
-
-# Combine with country filters (e.g. US Obfuscated + NordWhisper)
-cargo run --release -- --country US --type obfuscated,nordwhisper
+npm run tauri dev
 ```
 
-### 5. Filter by Country
-```bash
-# Test only US servers (~2,500 servers)
-cargo run --release -- --country US
+Or run the web frontend in the browser:
 
-# Test multiple countries (e.g. Germany, UK, and Netherlands)
-cargo run --release -- --country DE,GB,NL
+```bash
+npm run dev
 ```
 
-### 6. Force Full Retest (Bypass Cache)
+### Production Build
+
+Build the optimized desktop application for your current operating system:
+
 ```bash
-cargo run --release -- --force
+npm run tauri build
 ```
 
-### 7. Full Cryptographic TLS Handshake Mode
+The installer and executable will be generated in `src-tauri/target/release/bundle/`.
+
+---
+
+## 📱 Android Build
+
+The Android target is configured in `src-tauri/gen/android`.
+
+To run or build on Android:
+
 ```bash
-cargo run --release -- --mode tls --concurrency 200
+# Development mode on connected Android device/emulator
+npm run tauri android dev
+
+# Production APK build
+npm run tauri android build -- --apk
 ```
 
 ---
 
-## 🛠️ CLI Options
+## 🚀 GitHub Actions Release Workflow
 
-| Argument | Shorthand | Default | Description |
-|---|---|---|---|
-| `--concurrency` | `-c` | `500` | Number of simultaneous connections (0 for unlimited). |
-| `--port` | `-p` | `443` | Target server port (443 for OpenVPN/SSL/NordWhisper). |
-| `--timeout` | `-t` | `3.0` | Socket connection timeout in seconds per server. |
-| `--ttl` | | `6h` | Cache TTL (`30m`, `2h`, `1d`, `3600s`). Passed on restart. |
-| `--country` | | `all` | Filter by country code (`US`, `DE`, `CA,GB`, or `all`). |
-| `--type` / `--feature` | | `""` | Filter by protocol (`obfuscated`, `nordwhisper`, `p2p`). |
-| `--obfuscated` | | `False` | Filter to Obfuscated / XOR servers only. |
-| `--nordwhisper` | | `False` | Filter to NordWhisper servers only. |
-| `--mode` | | `tcp` | `tcp` (fastest 3-way handshake) or `tls` (SSL negotiation). |
-| `--force` | | `False` | Retest all servers by clearing existing cache. |
-| `--refresh-servers` | | `False` | Re-fetch the server list from the NordVPN API. |
-| `--export-csv` | | `nord_results.csv` | Output file path for CSV benchmark report. |
-| `--export-json` | | `nord_results.json` | Output file path for JSON benchmark report. |
-| `--auto-exit` | | `False` | Automatically exit immediately upon scan completion. |
+Pushing a git tag matching `v*` triggers the automated release workflow:
 
----
-
-## 📂 Project Architecture
-
-```
-nifty-darwin/
-├── Cargo.toml                  # Rust crate configuration & dependencies
-├── src/                        # Rust high-performance engine
-│   ├── lib.rs                  # Library entrypoint & module exports
-│   ├── main.rs                 # CLI entrypoint (clap derive)
-│   ├── models.rs               # ServerInfo, TestResult, TestStatus models
-│   ├── api.rs                  # NordVPN API client with local metadata cache
-│   ├── cache.rs                # SQLite cache manager with TTL logic & WAL mode
-│   ├── scanner.rs              # High-concurrency async socket probe engine (TCP & TLS)
-│   ├── tui.rs                  # Ratatui & Crossterm live dashboard renderer
-│   ├── exporter.rs             # CSV and JSON report exporter
-│   └── runner.rs               # Main coordinator & reactive lifecycle loop
-├── tests/
-│   └── test_all.rs             # Unit & integration tests
-├── main.py                     # Python CLI entrypoint
-├── requirements.txt            # Python dependencies (rich, httpx)
-├── README.md                   # Documentation & usage guide
-├── nord_results.csv            # Ranked CSV benchmark export
-├── nord_results.json           # Ranked JSON benchmark export
-├── .cache/
-│   ├── nord_servers_metadata.json   # Cached server catalog from NordVPN API
-│   └── nord_test_cache.db           # Persistent SQLite database storing test results
-└── nord_tester/                # Python implementation
-    ├── __init__.py
-    ├── models.py
-    ├── api.py
-    ├── cache.py
-    ├── keyboard.py
-    ├── scanner.py
-    ├── tui.py
-    ├── exporter.py
-    └── runner.py
+```bash
+git tag v1.0.0
+git push origin v1.0.0
 ```
 
----
-
-## 📊 Benchmark Output Example
-
-```
-=== NordVPN Test Run Complete ===
-Total Servers:   7,205
-Passed (Cached): 7,205
-Online:          7,200
-Offline/Timeout: 5
-Latency:         Min: 101.0ms | Avg: 1116.3ms | Max: 2772.7ms
-CSV Export:      c:\...\nord_results.csv
-JSON Export:     c:\...\nord_results.json
-```
+This workflow builds and publishes release assets for:
+- **Windows**: `.msi` and `.exe` (NSIS)
+- **macOS**: `.dmg` and `.app`
+- **Linux**: `.deb` and `.AppImage`
+- **Android**: `.apk` (Universal, ARM64, ARMv7, x86_64)
+- **Auto-Updater JSON**: `latest.json` with Minisign signatures

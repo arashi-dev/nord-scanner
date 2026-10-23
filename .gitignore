@@ -12,6 +12,7 @@ nord_results.json
 
 # Environments
 .env
+.env.local
 .venv
 env/
 venv/
@@ -26,4 +27,20 @@ nord_relay.js
 
 # Rust build target
 /target/
+src-tauri/target/
 
+# Node.js
+node_modules/
+dist/
+dist-ssr/
+*.local
+*.tsbuildinfo
+
+
+# Android build artifacts
+src-tauri/gen/android/.gradle/
+src-tauri/gen/android/app/build/
+src-tauri/gen/android/build/
+src-tauri/gen/android/local.properties
+src-tauri/gen/android/.idea/
+src-tauri/gen/android/*.iml

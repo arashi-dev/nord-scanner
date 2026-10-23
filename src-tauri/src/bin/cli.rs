@@ -1,18 +1,10 @@
-mod api;
-mod cache;
-mod exporter;
-mod models;
-mod runner;
-mod scanner;
-mod tui;
-
 use clap::Parser;
-use runner::{parse_ttl, AppRunner};
+use nord_scanner::runner::{parse_ttl, AppRunner};
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "nord_tester",
-    about = "NordVPN Bulk Connection Tester - Real-time concurrent socket benchmark with persistent caching.",
+    name = "nord-scanner",
+    about = "Nord Scanner - Real-time concurrent socket benchmark with persistent caching.",
     version = "0.1.0"
 )]
 struct Args {
@@ -25,7 +17,7 @@ struct Args {
     port: u16,
 
     /// Connection timeout in seconds per server.
-    #[arg(short = 't', long = "timeout", default_value_t = 3.0)]
+    #[arg(short = 't', long = "timeout", default_value_t = 30.0)]
     timeout: f64,
 
     /// Cache Time-To-Live duration. Formats: 30m, 6h, 1d, 3600s.
@@ -48,28 +40,28 @@ struct Args {
     #[arg(long = "nordwhisper")]
     nordwhisper: bool,
 
-    /// Connection test mode: 'tcp' (real 3-way handshake) or 'tls' (full cryptographic SSL handshake).
+    /// Connection test mode: 'tcp' (fastest 3-way handshake) or 'tls' (full cryptographic SSL handshake).
     #[arg(long = "mode", default_value = "tcp")]
     mode: String,
 
-    /// Force retesting of all servers by ignoring and clearing cached results.
-    #[arg(long = "force", visible_alias = "no-cache")]
+    /// Force full benchmark bypassing cache.
+    #[arg(long = "force", default_value_t = false)]
     force: bool,
 
-    /// Force refetching the complete server catalog from NordVPN API instead of using local server metadata cache.
-    #[arg(long = "refresh-servers")]
+    /// Re-fetch the entire server list from NordVPN API instead of using cached metadata.
+    #[arg(long = "refresh-servers", default_value_t = false)]
     refresh_servers: bool,
 
-    /// Path for exporting results to CSV (set to '' to disable).
+    /// Export benchmark results to CSV file.
     #[arg(long = "export-csv", default_value = "nord_results.csv")]
     export_csv: String,
 
-    /// Path for exporting results to JSON (set to '' to disable).
+    /// Export benchmark results to JSON file.
     #[arg(long = "export-json", default_value = "nord_results.json")]
     export_json: String,
 
-    /// Automatically exit immediately when all tests finish.
-    #[arg(long = "auto-exit")]
+    /// Automatically export results and exit once all servers are benchmarked.
+    #[arg(long = "auto-exit", default_value_t = false)]
     auto_exit: bool,
 }
 
@@ -77,28 +69,26 @@ struct Args {
 async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
-    // Process country filter
-    let country_filter: Option<Vec<String>> = if !args.country.is_empty()
-        && !args.country.trim().eq_ignore_ascii_case("all")
-    {
+    let ttl_seconds = parse_ttl(&args.ttl);
+
+    let country_filter = if args.country.trim().is_empty() || args.country.eq_ignore_ascii_case("all") {
+        None
+    } else {
         Some(
             args.country
                 .split(',')
-                .map(|c| c.trim().to_uppercase())
-                .filter(|c| !c.is_empty())
+                .map(|s| s.trim().to_uppercase())
+                .filter(|s| !s.is_empty())
                 .collect(),
         )
-    } else {
-        None
     };
 
-    // Process feature/type filter
     let mut feature_filter: Vec<String> = Vec::new();
-    if !args.feature.is_empty() {
+    if !args.feature.trim().is_empty() {
         for f in args.feature.split(',') {
-            let tr = f.trim().to_lowercase();
-            if !tr.is_empty() {
-                feature_filter.push(tr);
+            let f = f.trim();
+            if !f.is_empty() {
+                feature_filter.push(f.to_string());
             }
         }
     }
@@ -108,34 +98,19 @@ async fn main() -> anyhow::Result<()> {
     if args.nordwhisper && !feature_filter.iter().any(|f| f == "nordwhisper") {
         feature_filter.push("nordwhisper".to_string());
     }
-    let feature_filter_opt = if !feature_filter.is_empty() {
+
+    let feature_filter = if feature_filter.is_empty() {
+        None
+    } else {
         Some(feature_filter)
-    } else {
-        None
-    };
-
-    let concurrency = if args.concurrency == 0 {
-        10000
-    } else {
-        args.concurrency
-    };
-
-    let ttl_seconds = parse_ttl(&args.ttl);
-
-    let csv_export = if args.export_csv.trim().is_empty() {
-        None
-    } else {
-        Some(args.export_csv)
-    };
-
-    let json_export = if args.export_json.trim().is_empty() {
-        None
-    } else {
-        Some(args.export_json)
     };
 
     let runner = AppRunner {
-        concurrency,
+        concurrency: if args.concurrency == 0 {
+            10000
+        } else {
+            args.concurrency
+        },
         port: args.port,
         timeout: args.timeout,
         ttl_str: args.ttl,
@@ -144,12 +119,11 @@ async fn main() -> anyhow::Result<()> {
         refresh_servers: args.refresh_servers,
         mode: args.mode,
         country_filter,
-        feature_filter: feature_filter_opt,
-        csv_export,
-        json_export,
+        feature_filter,
+        csv_export: Some(args.export_csv),
+        json_export: Some(args.export_json),
         auto_exit: args.auto_exit,
     };
 
-    runner.run().await?;
-    Ok(())
+    runner.run().await
 }
