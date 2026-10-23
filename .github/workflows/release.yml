@@ -190,6 +190,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Download Android Artifacts
         uses: actions/download-artifact@v4
         with:
@@ -200,5 +203,7 @@ jobs:
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
-          gh release upload "${{ github.ref_name }}" android-dist/*.apk --clobber
+          ls -la android-dist/
+          gh release upload "${{ github.ref_name }}" android-dist/*.apk --repo "${{ github.repository }}" --clobber
