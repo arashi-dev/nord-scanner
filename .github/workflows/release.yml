@@ -41,11 +41,14 @@ jobs:
         with:
           targets: ${{ matrix.platform == 'macos-x86_64' && 'x86_64-apple-darwin,aarch64-apple-darwin' || '' }}
 
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
       - name: Install Linux system dependencies
         if: matrix.os == 'ubuntu-22.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev
 
       - name: Install Node dependencies
         run: npm ci
@@ -138,7 +141,10 @@ jobs:
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,i686-linux-android
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
 
       - name: Install Node dependencies
         run: npm ci
@@ -164,7 +170,7 @@ jobs:
           fi
 
       - name: Build Android APK
-        run: npx @tauri-apps/cli android build --apk --split-per-abi
+        run: npx @tauri-apps/cli android build --apk --split-per-abi --target aarch64 --target armv7 --target x86_64
         env:
           NDK_HOME: ${{ env.ANDROID_NDK_ROOT }}
 
