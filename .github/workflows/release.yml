@@ -63,6 +63,47 @@ jobs:
           includeUpdaterJson: true
           updaterJsonPreferNsis: true
 
+      - name: Build TUI Binary
+        shell: bash
+        run: |
+          mkdir -p tui-dist
+          if [ "${{ matrix.platform }}" = "windows-x86_64" ]; then
+            cargo build --release --bin nord-scanner-cli
+            cp target/release/nord-scanner-cli.exe tui-dist/nord-scanner-cli.exe
+            cd tui-dist
+            7z a nord-scanner-tui-windows-x86_64.zip nord-scanner-cli.exe
+            tar -czvf nord-scanner-tui-windows-x86_64.tar.gz nord-scanner-cli.exe
+            cd ..
+          elif [ "${{ matrix.platform }}" = "linux-x86_64" ]; then
+            cargo build --release --bin nord-scanner-cli
+            cp target/release/nord-scanner-cli tui-dist/nord-scanner-cli
+            chmod +x tui-dist/nord-scanner-cli
+            cd tui-dist
+            tar -czvf nord-scanner-tui-linux-x86_64.tar.gz nord-scanner-cli
+            cd ..
+          elif [ "${{ matrix.platform }}" = "macos-x86_64" ]; then
+            cargo build --release --bin nord-scanner-cli --target x86_64-apple-darwin
+            cargo build --release --bin nord-scanner-cli --target aarch64-apple-darwin
+            lipo -create -output tui-dist/nord-scanner-cli \
+              target/x86_64-apple-darwin/release/nord-scanner-cli \
+              target/aarch64-apple-darwin/release/nord-scanner-cli
+            chmod +x tui-dist/nord-scanner-cli
+            cd tui-dist
+            tar -czvf nord-scanner-tui-macos-universal.tar.gz nord-scanner-cli
+            cd ..
+          fi
+
+      - name: Upload TUI Archive to GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: |
+            tui-dist/nord-scanner-tui-*.tar.gz
+            tui-dist/nord-scanner-tui-*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   release-android:
     name: Build Android (APK & AAB)
     runs-on: ubuntu-latest
@@ -106,8 +147,9 @@ jobs:
 
       - name: Upload APKs to GitHub Release
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
         with:
+          tag_name: ${{ github.ref_name }}
           files: |
             src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk
             src-tauri/gen/android/app/build/outputs/apk/arm64-v8a/release/*.apk
