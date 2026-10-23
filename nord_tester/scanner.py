@@ -129,11 +129,17 @@ class BulkScanner:
             error_msg = "Connection refused"
         except OSError as e:
             err_str = str(e)
+            win_err = getattr(e, "winerror", None)
             if "unreachable" in err_str.lower():
                 status = TestStatus.UNREACHABLE
+                error_msg = err_str
+            elif win_err in (121, 10060) or "semaphore timeout" in err_str.lower() or "timed out" in err_str.lower():
+                # On Windows, WinError 121 / 10060 occurs when SYN packets are silently dropped by firewall/DPI
+                status = TestStatus.TIMEOUT
+                error_msg = f"Timed out / Dropped by network ({err_str})"
             else:
                 status = TestStatus.ERROR
-            error_msg = err_str
+                error_msg = err_str
         except Exception as e:
             status = TestStatus.ERROR
             error_msg = str(e)

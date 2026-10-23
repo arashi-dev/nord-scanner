@@ -15,3 +15,11 @@ nord_results.json
 .venv
 env/
 venv/
+
+# Generated OpenVPN profiles
+*.ovpn
+
+# Temporary experiment and debug scripts
+test_direct_nord.py
+nord_port_forward.js
+nord_relay.js
