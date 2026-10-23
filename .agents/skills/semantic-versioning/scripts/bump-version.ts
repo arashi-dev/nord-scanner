@@ -438,7 +438,7 @@ Options:
     }
 
     if (options.push) {
-      const branch = runGit(["rev-parse", "--abbrev-ref", "HEAD"]) || "master";
+      const branch = runGit(["rev-parse", "--abbrev-ref", "HEAD"]) || "main";
       console.log(`[GIT] Pushing branch '${branch}' and tag '${tagName}'...`);
       execSync(`git push origin ${branch}`, { cwd: repoRoot, stdio: "inherit" });
       execSync(`git push origin ${tagName}`, { cwd: repoRoot, stdio: "inherit" });
