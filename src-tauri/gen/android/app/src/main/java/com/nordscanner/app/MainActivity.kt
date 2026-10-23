@@ -1,4 +1,4 @@
-package com.nordtester.app
+package com.nordscanner.app
 
 import android.os.Bundle
 import androidx.activity.enableEdgeToEdge

@@ -121,16 +121,19 @@ jobs:
       - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
-          distribution: "zulu"
+          distribution: "temurin"
           java-version: 17
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Setup Android NDK
+      - name: Configure Android NDK
         run: |
-          echo "y" | sdkmanager "ndk;25.2.9519653"
-          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/25.2.9519653" >> $GITHUB_ENV
+          if [ -z "$ANDROID_NDK_HOME" ]; then
+            NDK_PATH=$(ls -d $ANDROID_HOME/ndk/* 2>/dev/null | sort -V | tail -n 1)
+          else
+            NDK_PATH="$ANDROID_NDK_HOME"
+          fi
+          echo "NDK_HOME=$NDK_PATH" >> $GITHUB_ENV
+          echo "ANDROID_NDK_ROOT=$NDK_PATH" >> $GITHUB_ENV
+          echo "Using NDK at: $NDK_PATH"
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -140,36 +143,44 @@ jobs:
       - name: Install Node dependencies
         run: npm ci
 
-      - name: Decode Android Keystore
+      - name: Configure Android Signing
         shell: bash
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
             echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
-            echo "Keystore successfully decoded to $RUNNER_TEMP/release.jks"
+            cat <<EOF > src-tauri/gen/android/keystore.properties
+            storeFile=$RUNNER_TEMP/release.jks
+            storePassword=$ANDROID_KEYSTORE_PASSWORD
+            keyAlias=$ANDROID_KEY_ALIAS
+            keyPassword=$ANDROID_KEY_PASSWORD
+            EOF
+            echo "Keystore successfully configured in src-tauri/gen/android/keystore.properties"
           else
             echo "ANDROID_KEYSTORE_BASE64 secret not found, skipping keystore decode."
           fi
 
       - name: Build Android APK
-        run: npx @tauri-apps/cli android build --apk
+        run: npx @tauri-apps/cli android build --apk --split-per-abi
         env:
           NDK_HOME: ${{ env.ANDROID_NDK_ROOT }}
-          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/release.jks
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+
+      - name: Collect Android APKs
+        shell: bash
+        run: |
+          mkdir -p android-dist
+          find src-tauri/gen/android/app/build/outputs/apk -name "*.apk" -type f -exec cp {} android-dist/ \;
+          ls -la android-dist/
 
       - name: Upload APKs to GitHub Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
         with:
           tag_name: ${{ github.ref_name }}
-          files: |
-            src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk
-            src-tauri/gen/android/app/build/outputs/apk/arm64-v8a/release/*.apk
-            src-tauri/gen/android/app/build/outputs/apk/armeabi-v7a/release/*.apk
-            src-tauri/gen/android/app/build/outputs/apk/x86_64/release/*.apk
+          files: android-dist/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

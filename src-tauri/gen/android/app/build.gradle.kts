@@ -1,3 +1,4 @@
+import java.io.FileInputStream
 import java.util.Properties
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
@@ -14,12 +15,19 @@ val tauriProperties = Properties().apply {
     }
 }
 
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = Properties().apply {
+    if (keystorePropertiesFile.exists()) {
+        keystorePropertiesFile.inputStream().use { load(it) }
+    }
+}
+
 android {
     compileSdk = 37
-    namespace = "com.nordtester.app"
+    namespace = "com.nordscanner.app"
     defaultConfig {
         manifestPlaceholders["usesCleartextTraffic"] = "false"
-        applicationId = "com.nordtester.app"
+        applicationId = "com.nordscanner.app"
         minSdk = 24
         targetSdk = 37
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()
@@ -27,12 +35,16 @@ android {
     }
     signingConfigs {
         create("release") {
-            val keystorePath = System.getenv("ANDROID_KEYSTORE_PATH")
-            if (!keystorePath.isNullOrBlank() && file(keystorePath).exists()) {
-                storeFile = file(keystorePath)
-                storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
-                keyAlias = System.getenv("ANDROID_KEY_ALIAS")
-                keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+            val keyAliasProp = keystoreProperties.getProperty("keyAlias")
+            val keyPasswordProp = keystoreProperties.getProperty("keyPassword") ?: keystoreProperties.getProperty("password")
+            val storeFileProp = keystoreProperties.getProperty("storeFile")
+            val storePasswordProp = keystoreProperties.getProperty("storePassword") ?: keystoreProperties.getProperty("password")
+
+            if (!keyAliasProp.isNullOrBlank() && !storeFileProp.isNullOrBlank() && file(storeFileProp).exists()) {
+                keyAlias = keyAliasProp
+                keyPassword = keyPasswordProp
+                storeFile = file(storeFileProp)
+                storePassword = storePasswordProp
             }
         }
     }
