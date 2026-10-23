@@ -1,6 +1,6 @@
 [package]
 name = "nord-scanner"
-version = "0.1.2"
+version = "0.1.3"
 description = "Nord Scanner - Bulk Connection Benchmark & Scanner"
 authors = ["Nord Scanner Team"]
 edition = "2021"
