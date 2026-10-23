@@ -35,6 +35,21 @@ If testing is stopped or restarted, it **automatically detects and passes alread
 
 ## 📦 Installation & Requirements
 
+### Rust Implementation (Recommended — Max Performance)
+Requires **Rust 1.75+** (`cargo` and `rustc`).
+
+Build the release binary:
+```bash
+cargo build --release
+```
+The optimized binary will be generated at `./target/release/nord_tester.exe` (or `nord_tester` on Unix).
+
+Run tests:
+```bash
+cargo test
+```
+
+### Python Implementation
 Requires **Python 3.10+**.
 
 Install dependencies:
@@ -49,12 +64,21 @@ pip install -r requirements.txt
 ## ⚡ Quick Start
 
 ### 1. Test All 7,200+ Servers
+**Rust:**
+```bash
+cargo run --release --
+# or directly execute the binary:
+./target/release/nord_tester
+```
+**Python:**
 ```bash
 python main.py
 ```
 
 ### 2. Test with Custom Concurrency (e.g., 1,000 Simultaneous Workers)
 ```bash
+cargo run --release -- --concurrency 1000
+# or
 python main.py --concurrency 1000
 ```
 *(Tip: Setting `--concurrency 0` launches all servers simultaneously).*
@@ -62,47 +86,47 @@ python main.py --concurrency 1000
 ### 3. Custom Cache TTL (e.g., 2 hours or 30 minutes)
 ```bash
 # Cache test results for 2 hours (restarting passes servers tested in the last 2 hours)
-python main.py --ttl 2h
+cargo run --release -- --ttl 2h
 
 # Or 30 minutes
-python main.py --ttl 30m
+cargo run --release -- --ttl 30m
 ```
 
 ### 4. Filter by Protocol / Features (Obfuscated & NordWhisper)
 ```bash
 # Test ONLY Obfuscated + NordWhisper servers (5,432 servers)
-python main.py --type obfuscated,nordwhisper
+cargo run --release -- --type obfuscated,nordwhisper
 
 # Or use the convenient flags:
-python main.py --obfuscated --nordwhisper
+cargo run --release -- --obfuscated --nordwhisper
 
 # Test Obfuscated servers only (97 servers)
-python main.py --obfuscated
+cargo run --release -- --obfuscated
 
 # Test NordWhisper servers only (5,335 servers)
-python main.py --nordwhisper
+cargo run --release -- --nordwhisper
 
 # Combine with country filters (e.g. US Obfuscated + NordWhisper)
-python main.py --country US --type obfuscated,nordwhisper
+cargo run --release -- --country US --type obfuscated,nordwhisper
 ```
 
 ### 5. Filter by Country
 ```bash
 # Test only US servers (~2,500 servers)
-python main.py --country US
+cargo run --release -- --country US
 
 # Test multiple countries (e.g. Germany, UK, and Netherlands)
-python main.py --country DE,GB,NL
+cargo run --release -- --country DE,GB,NL
 ```
 
 ### 6. Force Full Retest (Bypass Cache)
 ```bash
-python main.py --force
+cargo run --release -- --force
 ```
 
 ### 7. Full Cryptographic TLS Handshake Mode
 ```bash
-python main.py --mode tls --concurrency 200
+cargo run --release -- --mode tls --concurrency 200
 ```
 
 ---
@@ -132,7 +156,20 @@ python main.py --mode tls --concurrency 200
 
 ```
 nifty-darwin/
-├── main.py                     # Main CLI entrypoint
+├── Cargo.toml                  # Rust crate configuration & dependencies
+├── src/                        # Rust high-performance engine
+│   ├── lib.rs                  # Library entrypoint & module exports
+│   ├── main.rs                 # CLI entrypoint (clap derive)
+│   ├── models.rs               # ServerInfo, TestResult, TestStatus models
+│   ├── api.rs                  # NordVPN API client with local metadata cache
+│   ├── cache.rs                # SQLite cache manager with TTL logic & WAL mode
+│   ├── scanner.rs              # High-concurrency async socket probe engine (TCP & TLS)
+│   ├── tui.rs                  # Ratatui & Crossterm live dashboard renderer
+│   ├── exporter.rs             # CSV and JSON report exporter
+│   └── runner.rs               # Main coordinator & reactive lifecycle loop
+├── tests/
+│   └── test_all.rs             # Unit & integration tests
+├── main.py                     # Python CLI entrypoint
 ├── requirements.txt            # Python dependencies (rich, httpx)
 ├── README.md                   # Documentation & usage guide
 ├── nord_results.csv            # Ranked CSV benchmark export
@@ -140,16 +177,16 @@ nifty-darwin/
 ├── .cache/
 │   ├── nord_servers_metadata.json   # Cached server catalog from NordVPN API
 │   └── nord_test_cache.db           # Persistent SQLite database storing test results
-└── nord_tester/
+└── nord_tester/                # Python implementation
     ├── __init__.py
-    ├── models.py               # ServerInfo, TestResult, TestStatus dataclasses
-    ├── api.py                  # NordVPN API client with local metadata cache
-    ├── cache.py                # SQLite cache manager with TTL logic & WAL mode
-    ├── keyboard.py             # Cross-platform non-blocking key listener
-    ├── scanner.py              # High-concurrency async socket probe engine
-    ├── tui.py                  # Rich-based Terminal User Interface renderer
-    ├── exporter.py             # CSV and JSON report exporter
-    └── runner.py               # Main coordinator & reactive lifecycle loop
+    ├── models.py
+    ├── api.py
+    ├── cache.py
+    ├── keyboard.py
+    ├── scanner.py
+    ├── tui.py
+    ├── exporter.py
+    └── runner.py
 ```
 
 ---

@@ -1,0 +1,266 @@
+use anyhow::{Context, Result};
+use serde::Deserialize;
+use std::collections::HashSet;
+use std::fs;
+use std::path::PathBuf;
+use std::time::{Duration, SystemTime};
+
+use crate::models::ServerInfo;
+
+const NORD_SERVERS_URL: &str = "https://api.nordvpn.com/v1/servers?limit=0";
+const META_CACHE_TTL_SECS: u64 = 24 * 3600;
+
+#[derive(Debug, Deserialize)]
+struct RawServer {
+    id: i64,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    hostname: Option<String>,
+    #[serde(default)]
+    station: Option<String>,
+    #[serde(default)]
+    load: Option<i32>,
+    #[serde(default)]
+    locations: Option<Vec<RawLocation>>,
+    #[serde(default)]
+    technologies: Option<Vec<RawIdentifier>>,
+    #[serde(default)]
+    groups: Option<Vec<RawIdentifier>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawLocation {
+    #[serde(default)]
+    country: Option<RawCountry>,
+    #[serde(default)]
+    city: Option<RawCity>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawCountry {
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    code: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawCity {
+    #[serde(default)]
+    name: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawIdentifier {
+    #[serde(default)]
+    identifier: Option<String>,
+}
+
+fn parse_server(s: RawServer) -> Option<ServerInfo> {
+    let station = s.station?;
+    if station.trim().is_empty() {
+        return None;
+    }
+
+    let (country_name, country_code, city_name) = match s.locations.and_then(|mut locs| {
+        if locs.is_empty() {
+            None
+        } else {
+            Some(locs.remove(0))
+        }
+    }) {
+        Some(loc) => {
+            let country = loc.country.unwrap_or(RawCountry {
+                name: None,
+                code: None,
+            });
+            let city = loc.city.unwrap_or(RawCity { name: None });
+            (
+                country.name.unwrap_or_else(|| "Unknown".to_string()),
+                country.code.unwrap_or_else(|| "??".to_string()).to_uppercase(),
+                city.name.unwrap_or_default(),
+            )
+        }
+        None => ("Unknown".to_string(), "??".to_string(), String::new()),
+    };
+
+    let technologies = s
+        .technologies
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|t| t.identifier)
+        .collect();
+
+    let groups = s
+        .groups
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|g| g.identifier)
+        .collect();
+
+    let id = s.id;
+    let name = s.name.unwrap_or_else(|| format!("Server #{}", id));
+    let hostname = s.hostname.unwrap_or_default();
+    let load = s.load.unwrap_or(0);
+
+    Some(ServerInfo {
+        id,
+        name,
+        hostname,
+        station,
+        country_name,
+        country_code,
+        city: city_name,
+        load,
+        technologies,
+        groups,
+    })
+}
+
+pub fn matches_features(server: &ServerInfo, requested_features: &[String]) -> bool {
+    for rf in requested_features {
+        let f = rf.trim().to_lowercase();
+        if (f == "obfuscated" || f == "xor" || f == "obfuscate") && server.is_obfuscated() {
+            return true;
+        }
+        if (f == "nordwhisper" || f == "whisper" || f == "nord_whisper")
+            && server.is_nordwhisper()
+        {
+            return true;
+        }
+        if f == "p2p" && server.groups.iter().any(|g| g.to_lowercase().contains("p2p")) {
+            return true;
+        }
+        if (f == "double" || f == "double_vpn")
+            && server.groups.iter().any(|g| g.to_lowercase().contains("double"))
+        {
+            return true;
+        }
+        if f == "onion"
+            && server.groups.iter().any(|g| g.to_lowercase().contains("onion"))
+        {
+            return true;
+        }
+        if f == "dedicated"
+            && server
+                .groups
+                .iter()
+                .any(|g| g.to_lowercase().contains("dedicated"))
+        {
+            return true;
+        }
+        // Generic match against technologies or groups
+        if server.technologies.iter().any(|t| t.to_lowercase().contains(&f))
+            || server.groups.iter().any(|g| g.to_lowercase().contains(&f))
+        {
+            return true;
+        }
+    }
+    false
+}
+
+pub async fn fetch_all_servers<F>(
+    force_refresh: bool,
+    progress_callback: F,
+    country_filter: Option<&[String]>,
+    feature_filter: Option<&[String]>,
+) -> Result<Vec<ServerInfo>>
+where
+    F: Fn(&str),
+{
+    let cache_dir = PathBuf::from(".cache");
+    let cache_file = cache_dir.join("nord_servers_metadata.json");
+    let _ = fs::create_dir_all(&cache_dir);
+
+    let mut raw_bytes: Option<Vec<u8>> = None;
+
+    if !force_refresh && cache_file.exists() {
+        if let Ok(metadata) = fs::metadata(&cache_file) {
+            if let Ok(mtime) = metadata.modified() {
+                if let Ok(age) = SystemTime::now().duration_since(mtime) {
+                    if age.as_secs() < META_CACHE_TTL_SECS {
+                        let age_hours = age.as_secs_f64() / 3600.0;
+                        progress_callback(&format!(
+                            "Loading server metadata from local cache ({:.1}h old)...",
+                            age_hours
+                        ));
+                        if let Ok(data) = fs::read(&cache_file) {
+                            raw_bytes = Some(data);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if raw_bytes.is_none() {
+        progress_callback("Connecting to NordVPN API to fetch complete server catalog...");
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(30))
+            .build()?;
+
+        match client.get(NORD_SERVERS_URL).send().await {
+            Ok(resp) => {
+                if let Ok(bytes) = resp.bytes().await {
+                    let vec_bytes = bytes.to_vec();
+                    let _ = fs::write(&cache_file, &vec_bytes);
+                    raw_bytes = Some(vec_bytes);
+                }
+            }
+            Err(e) => {
+                if cache_file.exists() {
+                    progress_callback(&format!(
+                        "API fetch failed ({}). Falling back to cached servers...",
+                        e
+                    ));
+                    raw_bytes = fs::read(&cache_file).ok();
+                } else {
+                    return Err(anyhow::anyhow!(
+                        "Failed to fetch NordVPN servers and no cache available: {}",
+                        e
+                    ));
+                }
+            }
+        }
+    }
+
+    let bytes = raw_bytes.context("No server metadata found")?;
+    let raw_list: Vec<RawServer> = serde_json::from_slice(&bytes)
+        .context("Failed to deserialize NordVPN server catalog JSON")?;
+
+    let country_set: Option<HashSet<String>> = country_filter.map(|cf| {
+        cf.iter()
+            .map(|c| c.trim().to_uppercase())
+            .filter(|c| !c.is_empty())
+            .collect()
+    });
+
+    let feat_list: Option<Vec<String>> = feature_filter.map(|ff| {
+        ff.iter()
+            .map(|f| f.trim().to_lowercase())
+            .filter(|f| !f.is_empty())
+            .collect()
+    });
+
+    let mut servers = Vec::with_capacity(raw_list.len());
+
+    for item in raw_list {
+        if let Some(parsed) = parse_server(item) {
+            if let Some(ref cset) = country_set {
+                if !cset.contains(&parsed.country_code) {
+                    continue;
+                }
+            }
+            if let Some(ref flist) = feat_list {
+                if !matches_features(&parsed, flist) {
+                    continue;
+                }
+            }
+            servers.push(parsed);
+        }
+    }
+
+    progress_callback(&format!("Ready: Loaded {} servers.", servers.len()));
+    Ok(servers)
+}

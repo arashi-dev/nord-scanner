@@ -23,3 +23,7 @@ venv/
 test_direct_nord.py
 nord_port_forward.js
 nord_relay.js
+
+# Rust build target
+/target/
+
