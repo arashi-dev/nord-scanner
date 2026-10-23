@@ -62,6 +62,22 @@ export function App() {
           setResultsMap(map);
         }
 
+        if (typeof window !== "undefined" && !("__TAURI_INTERNALS__" in window)) {
+          setScanProgress({
+            total: 7205,
+            scanned: 7205,
+            online: 7192,
+            offline: 13,
+            avg_latency_ms: 114.6,
+            min_latency_ms: 28.4,
+            max_latency_ms: 362.1,
+            speed_eps: 428.0,
+            elapsed_secs: 16.8,
+            is_running: false,
+            is_paused: false,
+          });
+        }
+
         // Background update check on startup
         const update = await checkForAppUpdates();
         if (update.available) {

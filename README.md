@@ -1,115 +1,94 @@
-# Nord Scanner (Tauri v2 Desktop & Mobile)
+# Nord Scanner
 
-A high-performance GUI and engine for **bulk connection benchmarking and scanning of all NordVPN servers simultaneously**, built with **Tauri v2, React 19, Vite, Tailwind CSS, and Shadcn UI**. Features real-time socket probing, millisecond latency measurements, persistent SQLite caching, and multiplatform support across Windows, macOS, Linux, and Android.
+> Fast, concurrent socket benchmark and server latency diagnostic tool for NordVPN. Available as a modern desktop application (Windows, macOS, Linux, Android) and an interactive terminal interface (TUI).
 
----
+[![Release](https://img.shields.io/github/v/release/arashi-dev/nord-scanner?style=flat-square&color=0284c7)](https://github.com/arashi-dev/nord-scanner/releases/latest)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Android-3b82f6?style=flat-square)](https://github.com/arashi-dev/nord-scanner/releases/latest)
+[![License](https://img.shields.io/badge/license-MIT-emerald?style=flat-square)](LICENSE)
 
-## 🚀 Features
-
-- **Tauri v2 Multiplatform Desktop & Mobile App**:
-  - Supported platforms: **Windows**, **macOS**, **Linux**, and **Android**.
-  - **Single Instance Support**: Enforces a single application instance on desktop and brings the active window to focus when re-launched.
-  - **Auto-Updater Support**: Built-in Tauri v2 updater (`@tauri-apps/plugin-updater`) for seamless over-the-air updates.
-- **Bulk Real Connection Testing**:
-  - Connects directly to server listening endpoints (default: TCP port 443 for OpenVPN / SSL / NordWhisper, or optional TLS cryptographic handshake).
-  - High-capacity Tokio async concurrency (tested up to 1,000+ workers).
-  - Benchmark all 7,200+ global NordVPN servers in **under 15–20 seconds** (~400+ tests/second).
-- **Persistent Filters & Settings with Reset**:
-  - Filter by Country (with automatic counts), Port, Protocol / Feature (`obfuscated`, `nordwhisper`, `p2p`, `double`, `onion`, `dedicated`), Mode (`tcp` vs `tls`), Concurrency, Search keyword, and Status.
-  - **Default Timeout**: Configured to **30 seconds** by default.
-  - All filter settings persist in `localStorage` across restarts.
-  - **Reset Button**: One-click reset restoring all defaults (including 30s timeout, port 443, etc.).
-- **Decoupled Manual Server Refresh**:
-  - Re-fetching the complete server catalog from the NordVPN API is done **manually and separately from scanning**.
-  - Dynamically displays the **last time it was refreshed successfully in time-ago format** (e.g. `just now`, `5 minutes ago`, `3 hours ago`).
-- **Live Metrics & Leaderboard**:
-  - Real-time progress bar, online/offline counts, tests/sec scan speed, elapsed time, and ETA.
-  - Dynamic Top 10 fastest online servers ranked by lowest latency with one-click IP copy.
-- **Automated GitHub Releases Workflow**:
-  - Automated CI/CD on tag push (`v*`) in [`.github/workflows/release.yml`](.github/workflows/release.yml).
-  - Builds Windows installers (`.msi`, `.exe`), macOS bundles (`.dmg`, `.app`), Linux packages (`.deb`, `.AppImage`), and Android APKs (`.apk`).
-  - Publishes assets and signed updater bundles to GitHub Releases.
+Nord Scanner performs high-capacity parallel socket handshakes (TCP or TLS) across all 7,200+ NordVPN servers simultaneously in under 20 seconds. It records exact round-trip latencies, identifies active endpoints, ranks the top fastest servers, and caches results in SQLite so restarted scans only test pending nodes.
 
 ---
 
-## 🛠️ Tech Stack
+## 🖥️ Previews
 
-- **Framework**: Tauri v2 (`@tauri-apps/api@2`, `tauri@2`)
-- **Frontend**: React 19, TypeScript, Vite 6
-- **Styling**: Tailwind CSS, Shadcn UI architecture, Lucide Icons
-- **Backend / Core Engine**: Rust (Tokio, reqwest, rusqlite with bundled SQLite, rustls)
-- **Plugins**: `tauri-plugin-single-instance`, `tauri-plugin-updater`
+### Desktop Application
+![Nord Scanner Desktop View](docs/screenshots/desktop-view.png)
+
+### Terminal User Interface (TUI)
+![Nord Scanner TUI View](docs/screenshots/tui-view.png)
 
 ---
 
-## 📦 Getting Started
+## 📥 Downloads (LTS / Latest Stable)
+
+| Platform | Architecture | Package Format | Download Link |
+| :--- | :--- | :--- | :--- |
+| **Windows** | x86_64 | Desktop Setup (`.exe`) | [Download .exe](https://github.com/arashi-dev/nord-scanner/releases/latest) |
+| | x86_64 | Windows Installer (`.msi`) | [Download .msi](https://github.com/arashi-dev/nord-scanner/releases/latest) |
+| | x86_64 | Standalone TUI / CLI (`.zip`) | [Download CLI (.zip)](https://github.com/arashi-dev/nord-scanner/releases/latest/download/nord-scanner-tui-windows-x86_64.zip) |
+| **macOS** | Universal (Apple Silicon & Intel) | Disk Image (`.dmg`) | [Download .dmg](https://github.com/arashi-dev/nord-scanner/releases/latest) |
+| | Universal | Standalone TUI / CLI (`.tar.gz`) | [Download CLI (.tar.gz)](https://github.com/arashi-dev/nord-scanner/releases/latest/download/nord-scanner-tui-macos-universal.tar.gz) |
+| **Linux** | x86_64 / amd64 | AppImage (`.AppImage`) | [Download .AppImage](https://github.com/arashi-dev/nord-scanner/releases/latest) |
+| | x86_64 / amd64 | Debian / Ubuntu (`.deb`) | [Download .deb](https://github.com/arashi-dev/nord-scanner/releases/latest) |
+| | x86_64 / amd64 | Standalone TUI / CLI (`.tar.gz`) | [Download CLI (.tar.gz)](https://github.com/arashi-dev/nord-scanner/releases/latest/download/nord-scanner-tui-linux-x86_64.tar.gz) |
+| **Android** | Universal | Android APK (`.apk`) | [Download APK](https://github.com/arashi-dev/nord-scanner/releases/latest) |
+
+> [!TIP]
+> View all release artifacts, SHA256 checksums, and update notes on the [GitHub Releases page](https://github.com/arashi-dev/nord-scanner/releases/latest).
+
+---
+
+## ⚡ Key Features
+
+- **Ultra-Fast Parallel Probing**: Tokio async concurrency benchmarks thousands of endpoints simultaneously (~400+ probes/sec).
+- **Persistent SQLite Cache**: Stores verified latencies with configurable TTL (`6h`, `1d`, etc.); restarts skip already-tested servers.
+- **Top 10 Live Leaderboard**: Real-time ranking of the fastest online nodes with one-click IP copy.
+- **Flexible Filters**: Filter by Country, Port, Protocol (`obfuscated`, `nordwhisper`, `p2p`), Mode (`tcp` / `tls`), and Concurrency.
+- **Data Export**: Save benchmark reports to ranked CSV and JSON formats on demand.
+- **Built-in Auto-Updater**: Seamless over-the-air updates for desktop releases via Tauri v2.
+
+---
+
+## 🚀 Quick Start (CLI)
+
+Run the standalone CLI binary directly:
+
+```bash
+# Scan all servers using default settings (TCP port 443, 500 workers)
+nord-scanner-cli
+
+# Benchmark specific countries with custom concurrency
+nord-scanner-cli --country US,DE,GB --concurrency 1000
+
+# Probe Obfuscated & NordWhisper servers using cryptographic TLS mode
+nord-scanner-cli --type obfuscated,nordwhisper --mode tls
+
+# Retest fresh (bypass cache) and export results upon completion
+nord-scanner-cli --force --auto-exit --export-csv results.csv
+```
+
+---
+
+## 🛠️ Building from Source
 
 ### Prerequisites
-
-- **Node.js**: v20+ or v22+
-- **Rust**: 1.75+ (`rustc` and `cargo`)
-- For Android: Android Studio / Android SDK & NDK
-
-### Installation
+- [Node.js](https://nodejs.org/) v20+ and [Rust](https://rustup.rs/) 1.75+
 
 ```bash
+# Clone repository
+git clone https://github.com/arashi-dev/nord-scanner.git
+cd nord-scanner
+
+# Install frontend dependencies
 npm install
-```
 
-### Development Mode
-
-Run the desktop application in dev mode with live reload:
-
-```bash
+# Run Desktop App in development mode
 npm run tauri dev
-```
 
-Or run the web frontend in the browser:
-
-```bash
-npm run dev
-```
-
-### Production Build
-
-Build the optimized desktop application for your current operating system:
-
-```bash
+# Build Desktop App for production
 npm run tauri build
+
+# Build CLI / TUI binary
+cargo build --release --bin nord-scanner-cli
 ```
-
-The installer and executable will be generated in `src-tauri/target/release/bundle/`.
-
----
-
-## 📱 Android Build
-
-The Android target is configured in `src-tauri/gen/android`.
-
-To run or build on Android:
-
-```bash
-# Development mode on connected Android device/emulator
-npm run tauri android dev
-
-# Production APK build
-npm run tauri android build -- --apk
-```
-
----
-
-## 🚀 GitHub Actions Release Workflow
-
-Pushing a git tag matching `v*` triggers the automated release workflow:
-
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
-
-This workflow builds and publishes release assets for:
-- **Windows**: `.msi` and `.exe` (NSIS)
-- **macOS**: `.dmg` and `.app`
-- **Linux**: `.deb` and `.AppImage`
-- **Android**: `.apk` (Universal, ARM64, ARMv7, x86_64)
-- **Auto-Updater JSON**: `latest.json` with Minisign signatures
