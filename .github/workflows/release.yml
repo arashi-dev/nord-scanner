@@ -153,12 +153,11 @@ jobs:
         run: |
           if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
             echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
-            cat <<EOF > src-tauri/gen/android/keystore.properties
-            storeFile=$RUNNER_TEMP/release.jks
-            storePassword=$ANDROID_KEYSTORE_PASSWORD
-            keyAlias=$ANDROID_KEY_ALIAS
-            keyPassword=$ANDROID_KEY_PASSWORD
-            EOF
+            printf "storeFile=%s\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n" \
+              "$RUNNER_TEMP/release.jks" \
+              "$ANDROID_KEYSTORE_PASSWORD" \
+              "$ANDROID_KEY_ALIAS" \
+              "$ANDROID_KEY_PASSWORD" > src-tauri/gen/android/keystore.properties
             echo "Keystore successfully configured in src-tauri/gen/android/keystore.properties"
           else
             echo "ANDROID_KEYSTORE_BASE64 secret not found, skipping keystore decode."
