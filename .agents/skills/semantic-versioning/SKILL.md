@@ -55,9 +55,9 @@ git log <last-tag>..HEAD --oneline
 git diff <last-tag>..HEAD --stat
 ```
 
-Alternatively, run the automated analysis script:
+Alternatively, run the automated TypeScript analysis script:
 ```powershell
-python .agents/skills/semantic-versioning/scripts/bump_version.py --check
+npx tsx .agents/skills/semantic-versioning/scripts/bump-version.ts --check
 ```
 
 ### Step 2: Categorize Changes
@@ -85,16 +85,16 @@ Run the automated bump script or update files directly:
 
 ```powershell
 # For automatic detection and update (stable by default):
-python .agents/skills/semantic-versioning/scripts/bump_version.py --bump auto
+npx tsx .agents/skills/semantic-versioning/scripts/bump-version.ts --bump auto
 
 # When user explicitly requested beta:
-python .agents/skills/semantic-versioning/scripts/bump_version.py --bump auto --beta
+npx tsx .agents/skills/semantic-versioning/scripts/bump-version.ts --bump auto --beta
 
 # When committing and tagging:
-python .agents/skills/semantic-versioning/scripts/bump_version.py --bump auto --commit --tag
+npx tsx .agents/skills/semantic-versioning/scripts/bump-version.ts --bump auto --commit --tag
 
 # When user asked to push:
-python .agents/skills/semantic-versioning/scripts/bump_version.py --bump auto --commit --tag --push
+npx tsx .agents/skills/semantic-versioning/scripts/bump-version.ts --bump auto --commit --tag --push
 ```
 
 ### Step 5: Verify Files and Lockfile
@@ -110,5 +110,5 @@ Ensure all files are consistent:
 
 ## References & Utilities
 
-- Helper script: [bump_version.py](./scripts/bump_version.py)
+- Helper script: [bump-version.ts](./scripts/bump-version.ts)
 - Reference guide: [semver-guide.md](./references/semver-guide.md)

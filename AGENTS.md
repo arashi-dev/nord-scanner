@@ -6,7 +6,7 @@ This document provides persistent instructions and operational rules for AI agen
 
 ## 📌 Project Overview
 - **Project**: Nord Scanner
-- **Stack**: Tauri v2, React 19, Vite, Tailwind CSS, Rust (Tokio, reqwest, rusqlite, rustls, ratatui)
+- **Stack**: Tauri v2, React 19, Vite, Tailwind CSS, TypeScript, Rust (Tokio, reqwest, rusqlite, rustls, ratatui)
 - **Platforms**: Windows, macOS, Linux, Android
 - **CI/CD**: GitHub Actions release workflow triggered on version tags (`v*`) in [`.github/workflows/release.yml`](.github/workflows/release.yml)
 
@@ -27,9 +27,9 @@ Whenever the user instructs to **"push new version"**, **"bump version"**, **"re
   # Check diff stats:
   git diff <last-tag>..HEAD --stat
   ```
-- Alternatively, run the automated analysis script:
+- Alternatively, run the TypeScript audit script:
   ```powershell
-  python .agents/skills/semantic-versioning/scripts/bump_version.py --check
+  npx tsx .agents/skills/semantic-versioning/scripts/bump-version.ts --check
   ```
 
 ### 2. Determine the Correct Version Bump
@@ -72,20 +72,20 @@ When bumping the version, you MUST update all of the following files simultaneou
 
 This project has a dedicated skill configured in [`.agents/skills/semantic-versioning/SKILL.md`](.agents/skills/semantic-versioning/SKILL.md).
 
-You can run the bundled helper script to inspect or execute version bumps automatically:
+You can run the bundled TypeScript helper script to inspect or execute version bumps automatically:
 ```powershell
-# 1. Analyze changes & show recommendation
-python .agents/skills/semantic-versioning/scripts/bump_version.py --check
+# 1. Analyze changes & show recommendation (dry-run)
+npx tsx .agents/skills/semantic-versioning/scripts/bump-version.ts --check
 
 # 2. Automatically apply recommended bump (stable X.Y.Z)
-python .agents/skills/semantic-versioning/scripts/bump_version.py --bump auto
+npx tsx .agents/skills/semantic-versioning/scripts/bump-version.ts --bump auto
 
 # 3. Apply recommended bump as beta (ONLY if explicitly requested by user)
-python .agents/skills/semantic-versioning/scripts/bump_version.py --bump auto --beta
+npx tsx .agents/skills/semantic-versioning/scripts/bump-version.ts --bump auto --beta
 
 # 4. Bump, commit, and tag
-python .agents/skills/semantic-versioning/scripts/bump_version.py --bump auto --commit --tag
+npx tsx .agents/skills/semantic-versioning/scripts/bump-version.ts --bump auto --commit --tag
 
 # 5. Bump, commit, tag, and push
-python .agents/skills/semantic-versioning/scripts/bump_version.py --bump auto --commit --tag --push
+npx tsx .agents/skills/semantic-versioning/scripts/bump-version.ts --bump auto --commit --tag --push
 ```
