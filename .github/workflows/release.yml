@@ -13,6 +13,8 @@ jobs:
   release-desktop:
     name: Build Desktop (${{ matrix.platform }})
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -94,19 +96,18 @@ jobs:
           fi
 
       - name: Upload TUI Archive to GitHub Release
-        uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
-        with:
-          tag_name: ${{ github.ref_name }}
-          files: |
-            tui-dist/nord-scanner-tui-*.tar.gz
-            tui-dist/nord-scanner-tui-*.zip
+        shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.ref_name }}" tui-dist/* --clobber
 
   build-android:
     name: Build Android (APK & AAB)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -186,6 +187,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: [release-desktop, build-android]
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: write
     steps:
       - name: Download Android Artifacts
         uses: actions/download-artifact@v4
@@ -194,9 +197,8 @@ jobs:
           path: android-dist
 
       - name: Upload APKs to GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          files: android-dist/*.apk
+        shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.ref_name }}" android-dist/*.apk --clobber
