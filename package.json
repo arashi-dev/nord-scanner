@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
+    "openspec": "openspec",
     "version:bump": "tsx .agents/skills/semantic-versioning/scripts/bump-version.ts"
   },
   "dependencies": {
@@ -21,6 +22,7 @@
     "tailwind-merge": "^3.0.1"
   },
   "devDependencies": {
+    "@fission-ai/openspec": "^1.14.3",
     "@tauri-apps/cli": "^2.2.0",
     "@types/node": "^22.13.0",
     "@types/react": "^19.0.8",

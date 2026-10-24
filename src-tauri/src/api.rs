@@ -1,7 +1,9 @@
 use anyhow::{Context, Result};
+use flate2::read::GzDecoder;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -9,6 +11,41 @@ use crate::models::ServerInfo;
 
 pub const NORD_SERVERS_URL: &str = "https://api.nordvpn.com/v1/servers?limit=0";
 pub const META_CACHE_TTL_SECS: u64 = 24 * 3600;
+
+#[derive(Debug, Clone)]
+pub struct ServerMirror {
+    pub name: &'static str,
+    pub url: &'static str,
+    pub timeout: Duration,
+}
+
+pub const SERVER_MIRRORS: &[ServerMirror] = &[
+    ServerMirror {
+        name: "Direct NordVPN API",
+        url: "https://api.nordvpn.com/v1/servers?limit=0",
+        timeout: Duration::from_secs(4),
+    },
+    ServerMirror {
+        name: "GitHub Releases CDN",
+        url: "https://github.com/arashi-dev/nord-scanner/releases/download/servers-cache/servers.json.gz",
+        timeout: Duration::from_secs(5),
+    },
+    ServerMirror {
+        name: "jsDelivr CDN",
+        url: "https://cdn.jsdelivr.net/gh/arashi-dev/nord-scanner@servers-data/servers.json.gz",
+        timeout: Duration::from_secs(5),
+    },
+    ServerMirror {
+        name: "Statically CDN",
+        url: "https://cdn.statically.io/gh/arashi-dev/nord-scanner/servers-data/servers.json",
+        timeout: Duration::from_secs(5),
+    },
+    ServerMirror {
+        name: "GitHub Raw Mirror",
+        url: "https://raw.githubusercontent.com/arashi-dev/nord-scanner/servers-data/servers.json",
+        timeout: Duration::from_secs(5),
+    },
+];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MetadataInfo {
@@ -177,6 +214,37 @@ pub fn get_cache_file(custom_dir: Option<&Path>) -> PathBuf {
     dir.join("nord_servers_metadata.json")
 }
 
+pub fn decompress_if_gzipped(bytes: &[u8]) -> Result<Vec<u8>> {
+    if bytes.len() >= 2 && bytes[0] == 0x1f && bytes[1] == 0x8b {
+        let mut decoder = GzDecoder::new(bytes);
+        let mut decompressed = Vec::new();
+        decoder
+            .read_to_end(&mut decompressed)
+            .context("Failed to decompress gzip server catalog stream")?;
+        Ok(decompressed)
+    } else {
+        Ok(bytes.to_vec())
+    }
+}
+
+pub fn parse_servers_bytes(bytes: &[u8]) -> Result<Vec<ServerInfo>> {
+    let decompressed = decompress_if_gzipped(bytes)?;
+
+    // 1. Try parsing directly as minified Vec<ServerInfo>
+    if let Ok(servers) = serde_json::from_slice::<Vec<ServerInfo>>(&decompressed) {
+        if !servers.is_empty() {
+            return Ok(servers);
+        }
+    }
+
+    // 2. Try parsing as raw NordVPN API response Vec<RawServer>
+    let raw_list: Vec<RawServer> = serde_json::from_slice(&decompressed)
+        .context("Failed to deserialize NordVPN server catalog JSON (tried ServerInfo and RawServer)")?;
+
+    let servers: Vec<ServerInfo> = raw_list.into_iter().filter_map(parse_server).collect();
+    Ok(servers)
+}
+
 pub fn get_metadata_info(custom_dir: Option<&Path>) -> MetadataInfo {
     let cache_file = get_cache_file(custom_dir);
     if !cache_file.exists() {
@@ -200,10 +268,10 @@ pub fn get_metadata_info(custom_dir: Option<&Path>) -> MetadataInfo {
 
     let age_seconds = mtime_epoch.map(|mt| now_epoch.saturating_sub(mt));
 
-    // Try reading count
+    // Try reading count with dual support (ServerInfo and RawServer)
     let count = if let Ok(data) = fs::read(&cache_file) {
-        if let Ok(raw_list) = serde_json::from_slice::<Vec<RawServer>>(&data) {
-            raw_list.len()
+        if let Ok(servers) = parse_servers_bytes(&data) {
+            servers.len()
         } else {
             0
         }
@@ -219,36 +287,119 @@ pub fn get_metadata_info(custom_dir: Option<&Path>) -> MetadataInfo {
     }
 }
 
-pub async fn refresh_servers_data(custom_dir: Option<&Path>) -> Result<(Vec<ServerInfo>, u64)> {
+pub async fn fetch_servers_with_fallback<F>(
+    custom_dir: Option<&Path>,
+    progress_callback: Option<&F>,
+) -> Result<(Vec<ServerInfo>, u64)>
+where
+    F: Fn(&str),
+{
     let cache_file = get_cache_file(custom_dir);
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(45))
-        .build()?;
+    let mut last_error: Option<String> = None;
 
-    let resp = client.get(NORD_SERVERS_URL).send().await
-        .context("Failed to connect to NordVPN API")?;
-    let bytes = resp.bytes().await.context("Failed to read server response bytes")?;
-    let raw_bytes = bytes.to_vec();
+    for mirror in SERVER_MIRRORS {
+        if let Some(cb) = progress_callback {
+            cb(&format!("Connecting to {}...", mirror.name));
+        }
 
-    let raw_list: Vec<RawServer> = serde_json::from_slice(&raw_bytes)
-        .context("Failed to deserialize NordVPN server catalog JSON")?;
+        let client = match reqwest::Client::builder()
+            .timeout(mirror.timeout)
+            .user_agent("NordScanner/0.1")
+            .build()
+        {
+            Ok(c) => c,
+            Err(e) => {
+                last_error = Some(format!("Failed to build HTTP client for {}: {}", mirror.name, e));
+                continue;
+            }
+        };
 
-    let _ = fs::write(&cache_file, &raw_bytes);
+        match client.get(mirror.url).send().await {
+            Ok(resp) => {
+                if !resp.status().is_success() {
+                    let err_msg = format!("{} responded with HTTP {}", mirror.name, resp.status());
+                    if let Some(cb) = progress_callback {
+                        cb(&format!("{} - trying next mirror...", err_msg));
+                    }
+                    last_error = Some(err_msg);
+                    continue;
+                }
 
-    let servers: Vec<ServerInfo> = raw_list.into_iter().filter_map(parse_server).collect();
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
+                match resp.bytes().await {
+                    Ok(raw_bytes) => {
+                        match parse_servers_bytes(&raw_bytes) {
+                            Ok(servers) if !servers.is_empty() => {
+                                // Save cleaned server catalog to cache as compact JSON
+                                if let Ok(json_bytes) = serde_json::to_vec(&servers) {
+                                    let _ = fs::write(&cache_file, json_bytes);
+                                }
+                                let now = SystemTime::now()
+                                    .duration_since(UNIX_EPOCH)
+                                    .unwrap_or_default()
+                                    .as_secs();
 
-    Ok((servers, now))
+                                if let Some(cb) = progress_callback {
+                                    cb(&format!("Loaded {} servers via {}.", servers.len(), mirror.name));
+                                }
+                                return Ok((servers, now));
+                            }
+                            Ok(_) => {
+                                last_error = Some(format!("{} returned empty server list", mirror.name));
+                            }
+                            Err(e) => {
+                                last_error = Some(format!("Failed to parse response from {}: {:#}", mirror.name, e));
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        last_error = Some(format!("Failed to read response body from {}: {:#}", mirror.name, e));
+                    }
+                }
+            }
+            Err(e) => {
+                let err_msg = format!("Connection to {} failed: {}", mirror.name, e);
+                if let Some(cb) = progress_callback {
+                    cb(&format!("{} - trying next mirror...", err_msg));
+                }
+                last_error = Some(err_msg);
+            }
+        }
+    }
+
+    // If all remote mirrors failed, attempt loading from local cache
+    if cache_file.exists() {
+        if let Ok(servers) = load_cached_servers_data(custom_dir) {
+            if !servers.is_empty() {
+                if let Some(cb) = progress_callback {
+                    cb(&format!(
+                        "All mirrors failed. Loaded {} servers from local cache.",
+                        servers.len()
+                    ));
+                }
+                let mtime = fs::metadata(&cache_file)
+                    .ok()
+                    .and_then(|m| m.modified().ok())
+                    .and_then(|t| t.duration_since(UNIX_EPOCH).ok().map(|d| d.as_secs()))
+                    .unwrap_or_default();
+                return Ok((servers, mtime));
+            }
+        }
+    }
+
+    Err(anyhow::anyhow!(
+        "Failed to fetch servers from any mirror, and no valid local cache was found. Last error: {}",
+        last_error.unwrap_or_else(|| "Unknown network error".to_string())
+    ))
+}
+
+pub async fn refresh_servers_data(custom_dir: Option<&Path>) -> Result<(Vec<ServerInfo>, u64)> {
+    fetch_servers_with_fallback::<fn(&str)>(custom_dir, None).await
 }
 
 pub fn load_cached_servers_data(custom_dir: Option<&Path>) -> Result<Vec<ServerInfo>> {
     let cache_file = get_cache_file(custom_dir);
     let bytes = fs::read(&cache_file).context("No cached servers file found")?;
-    let raw_list: Vec<RawServer> = serde_json::from_slice(&bytes)
-        .context("Failed to deserialize NordVPN server catalog JSON")?;
-
-    let servers: Vec<ServerInfo> = raw_list.into_iter().filter_map(parse_server).collect();
-    Ok(servers)
+    parse_servers_bytes(&bytes)
 }
 
 pub async fn fetch_all_servers<F>(
@@ -261,7 +412,7 @@ where
     F: Fn(&str),
 {
     let cache_file = get_cache_file(None);
-    let mut raw_bytes: Option<Vec<u8>> = None;
+    let mut servers_data: Option<Vec<ServerInfo>> = None;
 
     if !force_refresh && cache_file.exists() {
         if let Ok(metadata) = fs::metadata(&cache_file) {
@@ -273,8 +424,10 @@ where
                             "Loading server metadata from local cache ({:.1}h old)...",
                             age_hours
                         ));
-                        if let Ok(data) = fs::read(&cache_file) {
-                            raw_bytes = Some(data);
+                        if let Ok(cached) = load_cached_servers_data(None) {
+                            if !cached.is_empty() {
+                                servers_data = Some(cached);
+                            }
                         }
                     }
                 }
@@ -282,40 +435,12 @@ where
         }
     }
 
-    if raw_bytes.is_none() {
-        progress_callback("Connecting to NordVPN API to fetch complete server catalog...");
-        let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(30))
-            .build()?;
-
-        match client.get(NORD_SERVERS_URL).send().await {
-            Ok(resp) => {
-                if let Ok(bytes) = resp.bytes().await {
-                    let vec_bytes = bytes.to_vec();
-                    let _ = fs::write(&cache_file, &vec_bytes);
-                    raw_bytes = Some(vec_bytes);
-                }
-            }
-            Err(e) => {
-                if cache_file.exists() {
-                    progress_callback(&format!(
-                        "API fetch failed ({}). Falling back to cached servers...",
-                        e
-                    ));
-                    raw_bytes = fs::read(&cache_file).ok();
-                } else {
-                    return Err(anyhow::anyhow!(
-                        "Failed to fetch NordVPN servers and no cache available: {}",
-                        e
-                    ));
-                }
-            }
-        }
+    if servers_data.is_none() {
+        let (fetched_servers, _) = fetch_servers_with_fallback(None, Some(&progress_callback)).await?;
+        servers_data = Some(fetched_servers);
     }
 
-    let bytes = raw_bytes.context("No server metadata found")?;
-    let raw_list: Vec<RawServer> = serde_json::from_slice(&bytes)
-        .context("Failed to deserialize NordVPN server catalog JSON")?;
+    let raw_list = servers_data.context("No server metadata found")?;
 
     let country_set: Option<HashSet<String>> = country_filter.map(|cf| {
         cf.iter()
@@ -334,19 +459,17 @@ where
     let mut servers = Vec::with_capacity(raw_list.len());
 
     for item in raw_list {
-        if let Some(parsed) = parse_server(item) {
-            if let Some(ref cset) = country_set {
-                if !cset.contains(&parsed.country_code) {
-                    continue;
-                }
+        if let Some(ref cset) = country_set {
+            if !cset.contains(&item.country_code) {
+                continue;
             }
-            if let Some(ref flist) = feat_list {
-                if !matches_features(&parsed, flist) {
-                    continue;
-                }
-            }
-            servers.push(parsed);
         }
+        if let Some(ref flist) = feat_list {
+            if !matches_features(&item, flist) {
+                continue;
+            }
+        }
+        servers.push(item);
     }
 
     progress_callback(&format!("Ready: Loaded {} servers.", servers.len()));

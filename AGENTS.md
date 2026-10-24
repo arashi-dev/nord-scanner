@@ -89,3 +89,20 @@ npx tsx .agents/skills/semantic-versioning/scripts/bump-version.ts --bump auto -
 # 5. Bump, commit, tag, and push
 npx tsx .agents/skills/semantic-versioning/scripts/bump-version.ts --bump auto --commit --tag --push
 ```
+
+---
+
+## 📋 OpenSpec (Spec-Driven Development)
+
+This repository uses **OpenSpec** for spec-driven change management.
+- **Root Directory**: [`openspec/`](./openspec/)
+  - Proposals & Active Changes: [`openspec/changes/`](./openspec/changes/)
+  - System Specifications: [`openspec/specs/`](./openspec/specs/)
+  - Configuration: [`openspec/config.yaml`](./openspec/config.yaml)
+- **Workflows & Skills**: Available in [`.agents/skills/`](./.agents/skills/) (e.g. `openspec-propose`, `openspec-apply-change`, `openspec-verify-change`, `openspec-archive-change`) and slash workflows in [`.agents/workflows/`](./.agents/workflows/).
+- **CLI Commands**:
+  ```powershell
+  npm run openspec -- list          # List active changes
+  npm run openspec -- doctor        # OpenSpec environment health check
+  npm run openspec -- validate      # Validate changes and specifications
+  ```

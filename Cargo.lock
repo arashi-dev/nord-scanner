@@ -2607,6 +2607,7 @@ dependencies = [
  "clap",
  "crossterm",
  "csv",
+ "flate2",
  "futures",
  "ratatui",
  "reqwest 0.12.28",

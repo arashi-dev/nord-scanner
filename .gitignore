@@ -32,6 +32,7 @@ src-tauri/target/
 # Node.js
 node_modules/
 dist/
+dist-data/
 dist-ssr/
 *.local
 *.tsbuildinfo

@@ -1,0 +1,90 @@
+name: Sync NordVPN Servers
+
+on:
+  schedule:
+    # Runs every 2 hours to check if interval has elapsed (default 6h)
+    - cron: '0 */2 * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Force refresh even if interval has not elapsed'
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  sync-catalog:
+    name: Fetch, Minify & Publish Server Catalog
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check Sync Interval
+        id: check-interval
+        env:
+          IS_MANUAL: ${{ github.event_name == 'workflow_dispatch' }}
+          FORCE: ${{ github.event.inputs.force }}
+          INTERVAL_HOURS: ${{ vars.SYNC_INTERVAL_HOURS || '6' }}
+        run: |
+          if [ "$IS_MANUAL" = "true" ] && [ "$FORCE" = "true" ]; then
+            echo "Manual force refresh triggered."
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Check timestamp of latest commit on origin/servers-data
+          LAST_SYNC=$(git log -1 --format=%ct origin/servers-data 2>/dev/null || echo 0)
+          NOW=$(date +%s)
+          DIFF_HOURS=$(( (NOW - LAST_SYNC) / 3600 ))
+
+          echo "Last sync was $DIFF_HOURS hours ago (configured interval: $INTERVAL_HOURS hours)."
+          if [ "$DIFF_HOURS" -ge "$INTERVAL_HOURS" ] || [ "$LAST_SYNC" -eq 0 ]; then
+            echo "Interval elapsed. Proceeding with sync."
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Interval not reached yet. Skipping."
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Generate Minified Server Catalog
+        if: steps.check-interval.outputs.should_run == 'true'
+        run: node scripts/sync-servers.mjs
+
+      - name: Update GitHub Release (servers-cache)
+        if: steps.check-interval.outputs.should_run == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: servers-cache
+          name: "NordVPN Server Catalog Cache"
+          body: "Automated snapshot of NordVPN server metadata for Nord Scanner mirrors."
+          draft: false
+          prerelease: false
+          files: |
+            dist-data/servers.json
+            dist-data/servers.json.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish to Orphan Branch (servers-data)
+        if: steps.check-interval.outputs.should_run == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan servers-data
+          git rm -rf .
+          cp dist-data/servers.json .
+          cp dist-data/servers.json.gz .
+          git add servers.json servers.json.gz
+          git commit -m "chore(sync): update server catalog cache [skip ci]"
+          git push origin servers-data --force

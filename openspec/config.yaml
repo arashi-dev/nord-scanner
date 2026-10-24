@@ -1,0 +1,35 @@
+schema: spec-driven
+
+# Project context
+context: |
+  Project: Nord Scanner
+  Description: Concurrent socket benchmark and server latency diagnostic tool for NordVPN with Desktop (GUI) and Terminal (TUI) interfaces.
+  Tech Stack:
+    - Frontend: React 19, TypeScript, Vite, Tailwind CSS, Lucide React
+    - Backend: Rust 2021, Tauri v2, Tokio async runtime, reqwest, rusqlite, rustls, ratatui
+  Architecture:
+    - `src/`: React frontend (Dashboard, Server Table, Filter Controls, Export Modals)
+    - `src-tauri/src/`: Rust backend (scanner engine, parallel probing, sqlite cache, tauri commands)
+    - `src-tauri/src/tui.rs` or CLI: Terminal user interface
+  Conventions:
+    - Semantic Versioning (SemVer 2.0.0) following AGENTS.md guidelines.
+    - Synchronize version in package.json, src-tauri/Cargo.toml, src-tauri/tauri.conf.json, and Cargo.lock.
+    - Clean async Rust handling with error propagation.
+
+# Per-artifact rules
+rules:
+  proposal:
+    - Clearly define scope, impact on frontend vs Rust backend, and cross-platform implications (Windows, macOS, Linux, Android).
+    - Include breaking change analysis if touching backend IPC commands or DB schemas.
+  tasks:
+    - Group tasks by frontend, backend (Rust/Tauri), and testing/validation.
+    - Verify builds across TypeScript (`npm run build`) and Rust (`cargo check`).
+
+# Per-operation guidance
+operations:
+  apply:
+    guidance:
+      - Always ensure both TypeScript build and Cargo check succeed before completing tasks.
+  archive:
+    guidance:
+      - Update main specifications and summarize changes clearly.

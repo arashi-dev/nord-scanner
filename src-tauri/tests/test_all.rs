@@ -88,3 +88,78 @@ fn test_cache_and_export() {
 
     let _ = fs::remove_dir_all(&test_dir);
 }
+
+#[test]
+fn test_server_mirrors_order() {
+    use nord_scanner::api::SERVER_MIRRORS;
+    assert_eq!(SERVER_MIRRORS.len(), 5);
+    assert_eq!(SERVER_MIRRORS[0].name, "Direct NordVPN API");
+    assert_eq!(SERVER_MIRRORS[1].name, "GitHub Releases CDN");
+    assert_eq!(SERVER_MIRRORS[2].name, "jsDelivr CDN");
+    assert_eq!(SERVER_MIRRORS[3].name, "Statically CDN");
+    assert_eq!(SERVER_MIRRORS[4].name, "GitHub Raw Mirror");
+}
+
+#[test]
+fn test_decompress_and_parse_minified_servers() {
+    use flate2::write::GzEncoder;
+    use flate2::Compression;
+    use nord_scanner::api::{decompress_if_gzipped, parse_servers_bytes};
+    use std::io::Write;
+
+    let original = vec![
+        ServerInfo {
+            id: 101,
+            name: "US #101".to_string(),
+            hostname: "us101.nordvpn.com".to_string(),
+            station: "192.168.1.1".to_string(),
+            country_name: "United States".to_string(),
+            country_code: "US".to_string(),
+            city: "New York".to_string(),
+            load: 15,
+            technologies: vec!["wireguard".to_string()],
+            groups: vec!["p2p".to_string()],
+        },
+        ServerInfo {
+            id: 102,
+            name: "DE #102".to_string(),
+            hostname: "de102.nordvpn.com".to_string(),
+            station: "192.168.1.2".to_string(),
+            country_name: "Germany".to_string(),
+            country_code: "DE".to_string(),
+            city: "Frankfurt".to_string(),
+            load: 40,
+            technologies: vec!["openvpn_xor".to_string()],
+            groups: vec![],
+        },
+    ];
+
+    let json_bytes = serde_json::to_vec(&original).expect("Serialize failed");
+
+    // Test direct parsing of uncompressed JSON
+    let parsed_plain = parse_servers_bytes(&json_bytes).expect("Parse plain failed");
+    assert_eq!(parsed_plain.len(), 2);
+    assert_eq!(parsed_plain[0].hostname, "us101.nordvpn.com");
+    assert_eq!(parsed_plain[1].country_code, "DE");
+
+    // Test parsing of gzipped payload
+    let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+    encoder.write_all(&json_bytes).expect("Gzip write failed");
+    let gzipped_bytes = encoder.finish().expect("Gzip finish failed");
+
+    // Verify gzip magic bytes (0x1f, 0x8b)
+    assert!(gzipped_bytes.len() >= 2);
+    assert_eq!(gzipped_bytes[0], 0x1f);
+    assert_eq!(gzipped_bytes[1], 0x8b);
+
+    // Test decompress_if_gzipped
+    let decompressed = decompress_if_gzipped(&gzipped_bytes).expect("Decompress failed");
+    assert_eq!(decompressed, json_bytes);
+
+    // Test parse_servers_bytes on gzipped stream directly
+    let parsed_gz = parse_servers_bytes(&gzipped_bytes).expect("Parse gzipped failed");
+    assert_eq!(parsed_gz.len(), 2);
+    assert_eq!(parsed_gz[0].name, "US #101");
+    assert_eq!(parsed_gz[1].city, "Frankfurt");
+    assert!(parsed_gz[1].is_obfuscated());
+}
